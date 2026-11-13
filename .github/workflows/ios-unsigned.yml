@@ -1,0 +1,74 @@
+name: Build QuickPrint IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Standard public-repository runner, not a paid larger runner.
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      QUICKPRINT_BUNDLE_ID: app.quickprint.mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check TypeScript and extension generation
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run test:plugin
+      - name: Generate native project
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install CocoaPods
+        run: pod install --project-directory=ios
+      - name: Build device app without Apple credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/QuickPrint.xcworkspace \
+            -scheme QuickPrint -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/derived \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' build 2>&1 | tee build.log
+      - name: Package IPA with extension entitlements
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/package/Payload
+          cp -R build/derived/Build/Products/Release-iphoneos/QuickPrint.app build/package/Payload/
+          APP=build/package/Payload/QuickPrint.app
+          test -f "$APP/QuickPrint"
+          test -d "$APP/PlugIns/QuickPrintShare.appex"
+          # Ad-hoc signatures preserve the capabilities for the user's sideload signer.
+          # They are not Apple provisioning signatures and cannot install by themselves.
+          while IFS= read -r -d '' framework; do
+            codesign --force --sign - "$framework"
+          done < <(find "$APP" -depth -name '*.framework' -print0)
+          codesign --force --sign - --entitlements ios/QuickPrintShare/QuickPrintShare.entitlements "$APP/PlugIns/QuickPrintShare.appex"
+          codesign --force --sign - --entitlements ios/QuickPrint/QuickPrint.entitlements "$APP"
+          codesign --verify --deep --strict "$APP"
+          cd build/package
+          zip -qry ../QuickPrint-unsigned.ipa Payload
+          cd ..
+          shasum -a 256 QuickPrint-unsigned.ipa > SHA256.txt
+      - name: Publish downloadable IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "ipa-${{ github.run_number }}"
+          build/QuickPrint-unsigned.ipa build/SHA256.txt
+          --title "QuickPrint IPA ${{ github.run_number }}"
+          --notes "Device IPA for personal signing with AltStore. Requires your Apple ID; not an App Store or Apple-signed distribution."
