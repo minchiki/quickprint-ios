@@ -222,15 +222,16 @@ function QuickPrint() {
       });
       if (result.canceled) return;
       const file = result.assets[0];
-      if (document) {
-        try {
-          new File(document.uri).delete();
-        } catch {}
-      }
       const size = file.size ?? new File(file.uri).size;
       if (size > 25 * 1024 * 1024 || size <= 0) {
         new File(file.uri).delete();
         throw new Error("Выберите документ размером до 25 МБ.");
+      }
+      const pages = await bridge().pages(file.uri);
+      if (document) {
+        try {
+          new File(document.uri).delete();
+        } catch {}
       }
       pendingFile.write(JSON.stringify({ uri: file.uri }));
       setDocument({
@@ -238,7 +239,7 @@ function QuickPrint() {
         name: file.name,
         ext: file.name.split(".").pop()?.toLowerCase() ?? "",
         size,
-        pages: await bridge().pages(file.uri),
+        pages,
         key: Crypto.randomUUID(),
       });
       setCopies(1);
