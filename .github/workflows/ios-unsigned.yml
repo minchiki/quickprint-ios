@@ -29,6 +29,7 @@ jobs:
           npm run lint
           npm run typecheck
           npm run test:plugin
+          node scripts/test-model.cjs
       - name: Run native regression checks
         run: |
           swiftc modules/quick-print/ios/PrintClient.swift scripts/native-regression.swift -o /tmp/quickprint-regression
@@ -68,11 +69,30 @@ jobs:
           zip -qry ../QuickPrint-unsigned.ipa Payload
           cd ..
           shasum -a 256 QuickPrint-unsigned.ipa > SHA256.txt
+      - name: Build and launch iPhone simulator smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/QuickPrint.xcworkspace -scheme QuickPrint -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO build > simulator-build.log 2>&1 || { tail -100 simulator-build.log; exit 1; }
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for values in d["devices"].values() for x in values if x["name"].startswith("iPhone")))')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build/simulator/Build/Products/Release-iphonesimulator/QuickPrint.app
+          xcrun simctl status_bar "$DEVICE" override --time '9:41' --batteryState charged --batteryLevel 100
+          xcrun simctl launch "$DEVICE" app.quickprint.mobile
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot build/QuickPrint-light.png
+          xcrun simctl ui "$DEVICE" appearance dark
+          sleep 3
+          xcrun simctl io "$DEVICE" screenshot build/QuickPrint-dark.png
+          xcrun simctl shutdown "$DEVICE"
       - name: Publish downloadable IPA
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "ipa-${{ github.run_number }}"
-          build/QuickPrint-unsigned.ipa build/SHA256.txt
+          build/QuickPrint-unsigned.ipa build/SHA256.txt build/QuickPrint-light.png build/QuickPrint-dark.png
           --title "QuickPrint IPA ${{ github.run_number }}"
           --notes "Device IPA for personal signing with AltStore. Requires your Apple ID; not an App Store or Apple-signed distribution."

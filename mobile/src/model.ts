@@ -55,3 +55,19 @@ export const themes = {
     tint: "#102A43",
   },
 };
+
+export function isJob(value: unknown): value is Job {
+  if (!value || typeof value !== "object") return false;
+  const job = value as Job;
+  return typeof job.id === "string" && typeof job.ext === "string" &&
+    typeof job.status === "string" && typeof job.created === "number" &&
+    Number.isFinite(job.created) && !!job.options &&
+    typeof job.options.printer === "string" && Number.isInteger(job.options.copies);
+}
+export function restoreHistory(value: unknown): Job[] {
+  return Array.isArray(value) ? value.filter(isJob).filter(job => Date.now() / 1000 - job.created < 7 * 86400) : [];
+}
+export function restorePreferences(value: unknown): { theme: "system" | "light" | "dark"; printer: string } {
+  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return { theme: data.theme === "light" || data.theme === "dark" ? data.theme : "system", printer: typeof data.printer === "string" ? data.printer : "" };
+}

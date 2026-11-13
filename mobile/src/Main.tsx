@@ -25,7 +25,7 @@ import { File, Paths } from "expo-file-system";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { GlassSurface } from "./GlassSurface";
 import { bridge } from "../modules/quick-print";
-import { Job, labels, Status, themes } from "./model";
+import { Job, labels, Status, themes, restoreHistory, restorePreferences, isJob } from "./model";
 
 type Screen = "home" | "history" | "settings" | "connect" | "preview" | "job";
 type Document = {
@@ -67,7 +67,7 @@ export default function Main() {
 function QuickPrint() {
   const system = useColorScheme();
   const [initial] = useState(() =>
-    readJSON(preferenceFile, { theme: "system", printer: "" }),
+    restorePreferences(readJSON(preferenceFile, null)),
   );
   const [theme, setTheme] = useState<"system" | "light" | "dark">(
     initial.theme,
@@ -82,9 +82,7 @@ function QuickPrint() {
   } | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [jobs, setJobs] = useState<Job[]>(() =>
-    readJSON(historyFile, []).filter(
-      (job: Job) => Date.now() / 1000 - job.created < 7 * 86400,
-    ),
+    restoreHistory(readJSON(historyFile, [])),
   );
   const [historyCount, setHistoryCount] = useState(30);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
@@ -142,6 +140,8 @@ function QuickPrint() {
       const saved = JSON.parse(await bridge().connection());
       setConnection(saved);
       if (!saved) {
+        setStatus(null);
+        setConnectionError("");
         setOnline(false);
         return;
       }
@@ -150,7 +150,9 @@ function QuickPrint() {
         bridge().request("/v1/jobs", "GET"),
       ]);
       const next: Status = JSON.parse(info);
-      const list: Job[] = JSON.parse(recent);
+      const parsed: unknown = JSON.parse(recent);
+      if (!Array.isArray(next.printers) || !Array.isArray(parsed) || !parsed.every(isJob)) throw new Error("Некорректный ответ ПК. Обновите QuickPrint на компьютере.");
+      const list: Job[] = parsed;
       setStatus(next);
       setJobs(list);
       setOnline(true);
@@ -255,7 +257,7 @@ function QuickPrint() {
   }
   async function print() {
     await action(async () => {
-      if (!document || !selected)
+      if (!document || !selected || selected.offline || !online)
         throw new Error("Выберите документ и принтер.");
       const params = new URLSearchParams({
         printer_name: printer,
@@ -268,6 +270,7 @@ function QuickPrint() {
       const result = JSON.parse(
         await bridge().upload(document.uri, `/v1/jobs?${params}`, document.key),
       );
+      if (!isJob(result)) throw new Error("Компьютер не вернул корректное задание. Проверьте историю перед повторной печатью.");
       setActiveJob(result);
       setScreen("job");
       try {
@@ -385,6 +388,7 @@ function QuickPrint() {
               <T muted size={14}>
                 PDF, Word, фото и текст · до 25 МБ
               </T>
+              {document && <Button title={`Продолжить: ${document.name}`} secondary onPress={() => navigate("preview")} />}
               <View style={styles.sectionTitle}>
                 <T size={20} bold>
                   Недавние
@@ -740,10 +744,11 @@ function QuickPrint() {
                   </T>
                 )}
               </Section>
-              {!status?.sumatra && (
+              {!online && <Button title={connection ? "Проверить подключение" : "Подключить компьютер"} secondary onPress={() => connection ? action(refresh) : navigate("connect")} />}
+              {online && !status?.sumatra && (
                 <T muted>На ПК необходимо установить SumatraPDF.</T>
               )}
-              {document.ext === "docx" && !status?.docx && (
+              {online && document.ext === "docx" && !status?.docx && (
                 <T muted>Для Word установите LibreOffice на ПК.</T>
               )}
               <Button
@@ -752,6 +757,7 @@ function QuickPrint() {
                 disabled={
                   !online ||
                   !selected ||
+                  selected.offline ||
                   !status?.sumatra ||
                   (document.ext === "docx" && !status?.docx)
                 }
