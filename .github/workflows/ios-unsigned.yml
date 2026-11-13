@@ -70,12 +70,14 @@ jobs:
           cd ..
           shasum -a 256 QuickPrint-unsigned.ipa > SHA256.txt
       - name: Build and launch iPhone simulator smoke test
+        timeout-minutes: 20
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -workspace ios/QuickPrint.xcworkspace -scheme QuickPrint -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO build > simulator-build.log 2>&1 || { tail -100 simulator-build.log; exit 1; }
+            -derivedDataPath build/simulator -jobs 2 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee simulator-build.log
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for values in d["devices"].values() for x in values if x["name"].startswith("iPhone")))')
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
