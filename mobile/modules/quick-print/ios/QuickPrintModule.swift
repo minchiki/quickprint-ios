@@ -26,6 +26,7 @@ public class QuickPrintModule: Module {
     private var discovery: Discovery?
     public func definition() -> ModuleDefinition {
         Name("QuickPrint")
+        AsyncFunction("sharedStorageAvailable") { () -> Bool in SharedStore.sharedRoot != nil }
         AsyncFunction("connection") { () -> String in
             guard let connection = try SharedStore.load() else { return "null" }
             // Do not expose bearer credentials to JS, logs or AsyncStorage.
@@ -36,19 +37,21 @@ public class QuickPrintModule: Module {
             var connection = Connection(url: value["url"] as! String, fingerprint: value["fingerprint"] as! String, token: "", computer: "")
             let body = try JSONSerialization.data(withJSONObject: ["code": value["code"]!, "name": "iPhone"])
             let result = try await PrintClient(connection).request("/v1/pair", method: "POST", body: body)
-            let json = try JSONSerialization.jsonObject(with: result) as! [String: Any]
-            connection.token = json["token"] as! String
-            connection.computer = json["computer"] as! String
+            guard let json = try JSONSerialization.jsonObject(with: result) as? [String: Any],
+                  let token = json["token"] as? String, !token.isEmpty,
+                  let computer = json["computer"] as? String, !computer.isEmpty else { throw PrintError.message("Некорректный ответ компьютера. Обновите QuickPrint на ПК.") }
+            connection.token = token
+            connection.computer = computer
             try SharedStore.save(connection)
             return connection.computer
         }
         AsyncFunction("request") { (path: String, method: String) -> String in
             guard path.hasPrefix("/v1/"), let connection = try SharedStore.load() else { throw PrintError.message("Сначала подключите компьютер") }
-            return String(data: try await PrintClient(connection).request(path, method: method), encoding: .utf8)!
+            return String(decoding: try await PrintClient(connection).request(path, method: method), as: UTF8.self)
         }
         AsyncFunction("upload") { (uri: String, path: String, key: String) -> String in
             guard path.hasPrefix("/v1/jobs?"), let connection = try SharedStore.load(), let url = URL(string: uri), url.isFileURL else { throw PrintError.message("Не удалось открыть файл или подключение") }
-            return String(data: try await PrintClient(connection).request(path, method: "POST", file: url, key: key), encoding: .utf8)!
+            return String(decoding: try await PrintClient(connection).request(path, method: "POST", file: url, key: key), as: UTF8.self)
         }
         AsyncFunction("forget") { try SharedStore.clear() }
         AsyncFunction("setPrinter") { (name: String) in try SharedStore.setPrinter(name) }

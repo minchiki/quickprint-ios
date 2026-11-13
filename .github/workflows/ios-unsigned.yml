@@ -29,6 +29,10 @@ jobs:
           npm run lint
           npm run typecheck
           npm run test:plugin
+      - name: Run native regression checks
+        run: |
+          swiftc modules/quick-print/ios/PrintClient.swift scripts/native-regression.swift -o /tmp/quickprint-regression
+          /tmp/quickprint-regression
       - name: Generate native project
         run: npx expo prebuild --platform ios --no-install
       - name: Install CocoaPods

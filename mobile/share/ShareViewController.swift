@@ -84,14 +84,14 @@ class ShareViewController: UIViewController {
                 components.path = "/v1/jobs"
                 components.queryItems = [URLQueryItem(name: "printer_name", value: printer), URLQueryItem(name: "extension", value: file.pathExtension), URLQueryItem(name: "copies", value: String(copies)), URLQueryItem(name: "paper", value: paper), URLQueryItem(name: "orientation", value: landscape ? "landscape" : "portrait"), URLQueryItem(name: "duplex", value: String(duplex && supportsDuplex))]
                 let result = try await client.request(components.string!, method: "POST", file: file, key: key)
-                let job = try JSONSerialization.jsonObject(with: result) as! [String: Any]
+                guard let job = try JSONSerialization.jsonObject(with: result) as? [String: Any] else { throw PrintError.message("Некорректный ответ компьютера") }
                 jobID = job["id"] as? String
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
             guard let jobID else { throw PrintError.message("Компьютер не вернул номер задания") }
             for _ in 0..<45 {
                 let data = try await client.request("/v1/jobs/" + jobID)
-                let job = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+                guard let job = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw PrintError.message("Некорректный ответ компьютера") }
                 let state = job["status"] as? String ?? ""
                 status = ["queued": "В очереди", "rendering": "Подготавливаем страницы…", "spooling": "В очереди Windows…", "submitted": "Передано в Windows. Выход бумаги не подтверждён.", "cancelled": "Отменено", "interrupted": "Агент перезапущен. Проверьте очередь Windows."][state] ?? state
                 if state == "error" { throw PrintError.message(job["message"] as? String ?? "Ошибка печати") }
@@ -135,6 +135,7 @@ struct ShareScreen: View {
                 }
                 Section { Text("Документ отправляется напрямую на ваш компьютер по защищённому соединению.").font(.footnote).foregroundStyle(.secondary) }
             }
+            .tint(.blue)
             .navigationTitle("QuickPrint")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Готово") { model.close?() }.disabled(model.busy && model.jobID == nil) } }
             .sheet(isPresented: $preview) { if let file = model.file { QuickPreview(file: file) } }

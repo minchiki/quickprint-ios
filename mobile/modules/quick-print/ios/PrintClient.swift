@@ -18,16 +18,39 @@ enum PrintError: LocalizedError {
 
 enum SharedStore {
     static var group: String { Bundle.main.object(forInfoDictionaryKey: "QuickPrintAppGroup") as? String ?? "group.local.quickprint.app" }
+    // Provision metadata supplies candidate identifiers only; iOS authorizes container access.
+    static func provisionGroups(_ data: Data) -> [String] {
+        guard let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+              let value = try? PropertyListSerialization.propertyList(from: data[start.lowerBound..<end.upperBound], format: nil) as? [String: Any],
+              let entitlements = value["Entitlements"] as? [String: Any] else { return [] }
+        return entitlements["com.apple.security.application-groups"] as? [String] ?? []
+    }
+    static func candidates(configured: String, signed: [String]) -> [String] {
+        var result = signed.filter { $0 == configured || $0.hasPrefix(configured + ".") }
+        if result.isEmpty && Set(signed).count == 1 { result = signed }
+        result.append(configured)
+        var seen = Set<String>()
+        return result.filter { seen.insert($0).inserted }
+    }
+    static var sharedRoot: URL? {
+        let metadata = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        let provision = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision")
+            .flatMap { try? Data(contentsOf: $0) }.map(provisionGroups) ?? []
+        for candidate in candidates(configured: group, signed: metadata + provision) {
+            if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: candidate) { return url }
+        }
+        return nil
+    }
     static var root: URL {
         get throws {
-            // AltStore rewrites App Group identifiers during personal signing and
-            // exposes the signed identifiers in ALTAppGroups for both targets.
-            let signedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
-            let candidates = [group] + signedGroups.filter { $0 == group || $0.hasPrefix(group + ".") }
-            for candidate in candidates {
-                if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: candidate) { return url }
+            if let shared = sharedRoot { return shared }
+            guard Bundle.main.bundleURL.pathExtension != "appex" else {
+                throw PrintError.message("Подпись не предоставила общий контейнер. Откройте QuickPrint и выберите документ внутри приложения. Для меню «Поделиться» переустановите IPA с расширением и App Group.")
             }
-            throw PrintError.message("Общий контейнер недоступен. При установке сохраните расширение QuickPrint и его App Group.")
+            let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("QuickPrint", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory
         }
     }
     static func load() throws -> Connection? {
@@ -109,7 +132,9 @@ final class PrintClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate, @
         return value
     }
     static func isLAN(_ host: String) -> Bool {
-        let octets = host.split(separator: ".").compactMap { Int($0) }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4, parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy({ $0.isASCII && $0.isNumber }) }) else { return false }
+        let octets = parts.compactMap { Int($0) }
         guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else { return false }
         return octets[0] == 10 || (octets[0] == 192 && octets[1] == 168) || (octets[0] == 172 && (16...31).contains(octets[1]))
     }

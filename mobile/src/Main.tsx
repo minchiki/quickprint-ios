@@ -23,6 +23,7 @@ import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
 import { File, Paths } from "expo-file-system";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { GlassSurface } from "./GlassSurface";
 import { bridge } from "../modules/quick-print";
 import { Job, labels, Status, themes } from "./model";
 
@@ -94,6 +95,8 @@ function QuickPrint() {
   const [duplex, setDuplex] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [sharedStorage, setSharedStorage] = useState(true);
+  const [connectionError, setConnectionError] = useState("");
   const [online, setOnline] = useState(false);
   const [qr, setQR] = useState("");
   const [scan, setScan] = useState(false);
@@ -135,6 +138,7 @@ function QuickPrint() {
     if (pollBusy.current) return;
     pollBusy.current = true;
     try {
+      setSharedStorage(await bridge().sharedStorageAvailable());
       const saved = JSON.parse(await bridge().connection());
       setConnection(saved);
       if (!saved) {
@@ -150,6 +154,7 @@ function QuickPrint() {
       setStatus(next);
       setJobs(list);
       setOnline(true);
+      setConnectionError("");
       historyFile.write(JSON.stringify(list));
       setPrinter((current) =>
         next.printers.some((p) => p.name === current)
@@ -162,7 +167,7 @@ function QuickPrint() {
       );
     } catch (e) {
       setOnline(false);
-      setError(message(e));
+      setConnectionError(message(e));
     } finally {
       pollBusy.current = false;
     }
@@ -333,18 +338,17 @@ function QuickPrint() {
                 />
                 <T bold>QuickPrint</T>
               </View>
-              <Heading>Печать рядом.</Heading>
-              <T muted>С телефона — на ваш принтер.</T>
+              
               <View style={[styles.computer, { backgroundColor: c.surface }]}>
                 <View style={[styles.monitor, { backgroundColor: c.tint }]}>
                   <Ionicons
                     name="desktop-outline"
-                    size={42}
+                    size={28}
                     color={c.action}
                     accessible={false}
                   />
                 </View>
-                <T size={24} bold>
+                <T size={20} bold>
                   {connection?.computer ?? "Подключим компьютер"}
                 </T>
                 <T muted>
@@ -375,15 +379,14 @@ function QuickPrint() {
               </View>
               <Button
                 title="Выбрать документ"
-                icon="add-circle-outline"
+                icon="attach-outline"
                 onPress={pick}
-                disabled={!online}
               />
               <T muted size={14}>
                 PDF, Word, фото и текст · до 25 МБ
               </T>
               <View style={styles.sectionTitle}>
-                <T size={24} bold>
+                <T size={20} bold>
                   Недавние
                 </T>
                 <Pressable
@@ -445,6 +448,7 @@ function QuickPrint() {
           {screen === "settings" && (
             <>
               <Heading>Настройки</Heading>
+              {!sharedStorage && <Section><T bold>Печать из приложения доступна</T><T muted>Подпись не предоставила доступ к общему контейнеру. Выбирайте файл кнопкой «Выбрать документ». Меню «Поделиться» требует переустановки с расширением и App Group.</T></Section>}
               <Section>
                 <T bold>Принтер по умолчанию</T>
                 <PrinterChoices />
@@ -536,7 +540,7 @@ function QuickPrint() {
           )}
           {screen === "connect" && (
             <>
-              <Heading>{"Ваш компьютер.\nВсегда рядом."}</Heading>
+              <Heading>Подключение</Heading>
               <T muted>
                 Откройте QuickPrint в трее Windows и выберите «Подключить
                 iPhone».
@@ -714,6 +718,7 @@ function QuickPrint() {
                 <View style={styles.sectionTitle}>
                   <T>Альбомная ориентация</T>
                   <Switch
+                      trackColor={{ false: c.line, true: c.action }}
                     accessibilityLabel="Альбомная ориентация"
                     value={landscape}
                     onValueChange={setLandscape}
@@ -723,6 +728,7 @@ function QuickPrint() {
                   <View style={styles.sectionTitle}>
                     <T>С двух сторон</T>
                     <Switch
+                      trackColor={{ false: c.line, true: c.action }}
                       accessibilityLabel="Двусторонняя печать"
                       value={duplex}
                       onValueChange={setDuplex}
@@ -820,7 +826,7 @@ function QuickPrint() {
               <T muted>Подождите…</T>
             </View>
           )}
-          {!!error && (
+          {!!(error || connectionError) && (
             <View
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"
@@ -830,18 +836,13 @@ function QuickPrint() {
                 selectable
                 style={{ color: c.error, fontSize: 16, lineHeight: 24 }}
               >
-                {error}
+                {error || connectionError}
               </Text>
             </View>
           )}
         </ScrollView>
         {["home", "history", "settings"].includes(screen) && (
-          <View
-            style={[
-              styles.tabs,
-              { backgroundColor: c.surface, borderTopColor: c.line },
-            ]}
-          >
+          <GlassSurface dark={c.background === themes.dark.background} fallback={c.surface} style={styles.tabs}>
             {(
               [
                 { key: "home", title: "Главная", icon: "home-outline" },
@@ -858,7 +859,7 @@ function QuickPrint() {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: screen === tab.key }}
                 onPress={() => navigate(tab.key)}
-                style={styles.tab}
+                style={[styles.tab, screen === tab.key && { backgroundColor: c.tint }]}
               >
                 <Ionicons
                   name={tab.icon}
@@ -876,7 +877,7 @@ function QuickPrint() {
                 </Text>
               </Pressable>
             ))}
-          </View>
+          </GlassSurface>
         )}
         <Modal
           visible={scan}
@@ -1083,7 +1084,7 @@ function message(e: unknown) {
 }
 const styles = StyleSheet.create({
   content: {
-    padding: 24,
+    padding: 20,
     gap: 16,
     maxWidth: 640,
     width: "100%",
@@ -1091,17 +1092,17 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   heading: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: "700",
     letterSpacing: -0.8,
     marginTop: 12,
   },
   brand: { flexDirection: "row", gap: 10, alignItems: "center" },
-  computer: { padding: 24, borderRadius: 24, gap: 12, marginTop: 12 },
+  computer: { padding: 20, borderRadius: 20, gap: 8, marginTop: 4 },
   monitor: {
-    width: 80,
-    height: 72,
-    borderRadius: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
@@ -1141,11 +1142,16 @@ const styles = StyleSheet.create({
   empty: { paddingVertical: 28, gap: 12, alignItems: "flex-start" },
   tabs: {
     flexDirection: "row",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 10,
-    paddingBottom: 8,
+    borderRadius: 34,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    padding: 5,
+    maxWidth: 600,
+    width: "90%",
+    alignSelf: "center",
   },
   tab: {
+    borderRadius: 28,
     flex: 1,
     alignItems: "center",
     justifyContent: "center",

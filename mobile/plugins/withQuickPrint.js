@@ -47,8 +47,8 @@ module.exports = function withQuickPrint(config) {
           CFBundleExecutable: "$(EXECUTABLE_NAME)",
           CFBundleName: "$(PRODUCT_NAME)",
           CFBundlePackageType: "XPC!",
-          CFBundleShortVersionString: "1.0.0",
-          CFBundleVersion: "1",
+          CFBundleShortVersionString: config.version || "1.0.0",
+          CFBundleVersion: config.ios.buildNumber || "1",
           QuickPrintAppGroup: group,
           NSLocalNetworkUsageDescription:
             "Передача документа на ваш компьютер в локальной сети.",
@@ -144,8 +144,8 @@ module.exports = function withQuickPrint(config) {
         CLANG_ENABLE_MODULES: "YES",
         LD_RUNPATH_SEARCH_PATHS:
           '"$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"',
-        CURRENT_PROJECT_VERSION: "1",
-        MARKETING_VERSION: "1.0.0",
+        CURRENT_PROJECT_VERSION: config.ios.buildNumber || "1",
+        MARKETING_VERSION: config.version || "1.0.0",
         CODE_SIGN_STYLE: "Automatic",
       });
     }

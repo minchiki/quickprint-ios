@@ -1,6 +1,7 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
 
 type Native = {
+  sharedStorageAvailable(): Promise<boolean>;
   setPrinter(name: string): Promise<void>;
   connection(): Promise<string>;
   pair(raw: string): Promise<string>;
