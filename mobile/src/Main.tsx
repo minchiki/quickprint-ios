@@ -333,63 +333,29 @@ function QuickPrint() {
           )}
           {screen === "home" && (
             <>
-              <View style={styles.brand}>
-                <Ionicons
-                  name="print-outline"
-                  size={26}
-                  color={c.action}
-                  accessible={false}
-                />
-                <T bold>QuickPrint</T>
-              </View>
-              
-              <View style={[styles.computer, { backgroundColor: c.surface }]}>
-                <View style={[styles.monitor, { backgroundColor: c.tint }]}>
-                  <Ionicons
-                    name="desktop-outline"
-                    size={28}
-                    color={c.action}
-                    accessible={false}
-                  />
+              <Heading>Печать</Heading>
+              <Pressable accessibilityRole="button" disabled={busy}
+                onPress={() => online ? navigate("settings") : connection ? action(refresh) : navigate("connect")}
+                style={[styles.deviceRow, { backgroundColor: c.surface }]}>
+                <View style={[styles.deviceIcon, { backgroundColor: c.tint }]}>
+                  <Ionicons name="desktop-outline" size={24} color={c.action} />
                 </View>
-                <T size={20} bold>
-                  {connection?.computer ?? "Подключим компьютер"}
-                </T>
-                <T muted>
-                  {connection
-                    ? online
-                      ? "Доступен в локальной сети"
-                      : "Компьютер недоступен"
-                    : "Один раз отсканируйте QR-код на ПК."}
-                </T>
-                {online && (
-                  <T size={14} muted>
-                    {printer || "Принтер не найден"}
-                  </T>
-                )}
-                {!online && (
-                  <Button
-                    title={
-                      connection
-                        ? "Проверить подключение"
-                        : "Подключить компьютер"
-                    }
-                    secondary
-                    onPress={() =>
-                      connection ? action(refresh) : navigate("connect")
-                    }
-                  />
-                )}
+                <View style={{ flex: 1 }}>
+                  <T bold>{connection?.computer || "Подключить компьютер"}</T>
+                  <T muted size={14}>{online ? printer || "Нет доступных принтеров" : connection ? "Нет связи · проверить" : "По QR-коду с экрана ПК"}</T>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={c.muted} />
+              </Pressable>
+              <View style={[styles.printDesk, { backgroundColor: c.surface }]}>
+                <View style={[styles.paperSheet, { backgroundColor: c.tint, borderColor: c.line }]}>
+                  <Ionicons name="document-text-outline" size={42} color={c.action} />
+                </View>
+                <T bold size={23}>{document ? document.name : "Новый документ"}</T>
+                <T muted size={14}>{document ? "Документ готов к просмотру" : "PDF, DOCX, JPG, PNG или TXT · до 25 МБ"}</T>
+                <Button title={document ? "Продолжить печать" : "Выбрать документ"} icon="attach-outline"
+                  onPress={document ? () => navigate("preview") : pick} />
+                {document && <Button title="Выбрать другой файл" secondary onPress={pick} />}
               </View>
-              <Button
-                title="Выбрать документ"
-                icon="attach-outline"
-                onPress={pick}
-              />
-              <T muted size={14}>
-                PDF, Word, фото и текст · до 25 МБ
-              </T>
-              {document && <Button title={`Продолжить: ${document.name}`} secondary onPress={() => navigate("preview")} />}
               <View style={styles.sectionTitle}>
                 <T size={20} bold>
                   Недавние
@@ -400,7 +366,7 @@ function QuickPrint() {
                   style={styles.back}
                 >
                   <Text style={{ color: c.action, fontSize: 17 }}>
-                    Все задания
+                    История
                   </Text>
                 </Pressable>
               </View>
@@ -414,9 +380,9 @@ function QuickPrint() {
                     color={c.muted}
                     accessible={false}
                   />
-                  <T bold>Здесь появятся ваши задания</T>
+                  <T bold>Пока нет заданий</T>
                   <T muted>
-                    Выберите первый документ. Мы покажем его перед печатью.
+                    После отправки здесь появится статус печати.
                   </T>
                 </View>
               )}
@@ -1099,21 +1065,15 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   heading: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "700",
     letterSpacing: -0.8,
     marginTop: 12,
   },
-  brand: { flexDirection: "row", gap: 10, alignItems: "center" },
-  computer: { padding: 20, borderRadius: 20, gap: 8, marginTop: 4 },
-  monitor: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
+  deviceRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 18 },
+  deviceIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  printDesk: { padding: 20, borderRadius: 24, gap: 12 },
+  paperSheet: { width: 58, height: 72, marginVertical: 6, borderWidth: StyleSheet.hairlineWidth, borderRadius: 9, justifyContent: "center", alignItems: "center", transform: [{ rotate: "-5deg" }] },
   button: {
     minHeight: 54,
     borderRadius: 14,
@@ -1146,7 +1106,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 12,
   },
-  empty: { paddingVertical: 28, gap: 12, alignItems: "flex-start" },
+  empty: { paddingVertical: 16, gap: 6, alignItems: "center" },
   tabs: {
     flexDirection: "row",
     borderRadius: 34,

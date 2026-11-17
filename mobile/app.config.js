@@ -3,14 +3,14 @@ module.exports = {
   expo: {
     name: "QuickPrint",
     slug: "quickprint",
-    version: "1.1.0",
+    version: "1.2.0",
     orientation: "default",
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
     scheme: "quickprint",
     ios: {
       supportsTablet: true,
-      buildNumber: "2",
+      buildNumber: "3",
       bundleIdentifier: bundle,
       infoPlist: { ITSAppUsesNonExemptEncryption: false },
     },
